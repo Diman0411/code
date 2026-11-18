@@ -1,0 +1,11 @@
+
+{
+  
+
+  "dependencies": {
+    "hono": "^4.13.16"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4"
+  }
+}
