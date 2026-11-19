@@ -14,11 +14,11 @@ export class ApplicationModule {
   }
 
   public init(): ApplicationModule {
-    const { authController , usersController, validate } = this.users.init();
+    const { authRouter , usersRouter, validate } = this.users.init();
 
     this.server.use('*', validate);
-    this.server.route("/api/users", usersController);
-    this.server.route("/api/auth", authController);
+    this.server.route("/api/users", usersRouter);
+    this.server.route("/api/auth", authRouter);
 
     return this;
   }

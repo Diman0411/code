@@ -1,6 +1,6 @@
 import { sign } from "hono/jwt";
 
-export const createJWT = (secret: string, sub: string): Promise<string> => 
+export const createJWT = (sub: string, secret: string): Promise<string> => 
 {
     const  now = Math.floor(Date.now() /1000);
 

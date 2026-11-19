@@ -5,124 +5,121 @@ import { UserAuthSchema, userRegisterSchema, type UserAuthType, type UseRegister
 
 import { createJWT } from "../../utils/jwt";
 import { env } from "hono/adapter";
-import { decode } from "hono/jwt";
+import { decode, verify } from "hono/jwt";
 import { ApplicationValidator } from "../application.validator";
-import { ne } from "zod/locales";
 
-export class AuthController
-{
-    private readonly repository:UsersRepository;
+export class AuthController {
+    private readonly repository: UsersRepository;
 
-    constructor(repository: UsersRepository)
-    {
+    constructor(repository: UsersRepository) {
         this.repository = repository;
     }
 
-    public routes(): Hono
-    {
+    public routes(): Hono {
         return new Hono()
-        .post(
-            "register",
-            ApplicationValidator.validate("json", userRegisterSchema),
-            this.register.bind(this),
-        )
-        .post(
-            "/auth",
-            ApplicationValidator.validate("json", UserAuthSchema),
-            this.auth.bind(this),
-        )
-        .get("/me", this.me.bind(this));
+            .post(
+                "register",
+                ApplicationValidator.validate("json", userRegisterSchema),
+                this.register.bind(this),
+            )
+            .post(
+                "/auth",
+                ApplicationValidator.validate("json", UserAuthSchema),
+                this.auth.bind(this),
+            )
+            .get("/me", this.me.bind(this));
     }
 
     public async register(
         c: Context<
-        ApplicationEnviroment,
-        "/register",
-        {
-            out: 
+            ApplicationEnviroment,
+            "/register",
             {
-                json: UseRegisterType;
-            };
-        }
+                out:
+                {
+                    json: UseRegisterType;
+                };
+            }
         >,
-    ): Promise<TypedResponse<ApplicationResult<UserTokenType>>> 
-    {
-        const {JWT_SECRET} = env<ApplicationEnviroment['Bindings']>(c);
-        const {title, email, password} = c.req.valid('json');
+    ): Promise<TypedResponse<ApplicationResult<UserTokenType>>> {
+        const { JWT_SECRET } = env<ApplicationEnviroment['Bindings']>(c);
+        const { title, email, password } = c.req.valid('json');
         const hash = await Bun.password.hash(password);
 
-        if (this.repository.findByEmail(email))
-        {
+        if (this.repository.findByEmail(email)) {
             return c.json({ success: false, error: "Account already exist" }, 409);
         }
 
-        const user = this.repository.create(title, email, password);
-        const token= await createJWT(String(user?.id), JWT_SECRET);
+        const user = this.repository.create(title, email, hash);
+        const token = await createJWT(String(user?.id), JWT_SECRET);
 
-        return c.json({ success: true, data: {token}});
+        return c.json({ success: true, data: { token } });
     }
 
     public async auth(
         c: Context<
-        ApplicationEnviroment,
-        "/auth",
-        {
-            out: 
+            ApplicationEnviroment,
+            "/auth",
             {
-                json: UserAuthType;
-            };
-        }
+                out:
+                {
+                    json: UserAuthType;
+                };
+            }
         >,
-    ): Promise<TypedResponse<ApplicationResult<UserTokenType>>> 
-    {
-        const {JWT_SECRET} = env<ApplicationEnviroment['Bindings']>(c);
-        const {email, password} = c.req.valid('json');
+    ): Promise<TypedResponse<ApplicationResult<UserTokenType>>> {
+        const { JWT_SECRET } = env<ApplicationEnviroment['Bindings']>(c);
+        const { email, password } = c.req.valid('json');
         const user = this.repository.findByEmail(email);
 
-        if (!user || (await Bun.password.verify(password, user.password)))
-        {
+        if (!user || !(await Bun.password.verify(password, user.password))) {
             return c.json({ success: false, error: "Bad autentification" }, 401);
         }
 
-        const token= await createJWT(String(user?.id), JWT_SECRET);
+        const token = await createJWT(String(user?.id), JWT_SECRET);
 
-        return c.json({ success: true, data: {token}});
+        return c.json({ success: true, data: { token } });
     }
 
     public async me(
-        c:Context<ApplicationEnviroment>,
-    ): Promise<TypedResponse<ApplicationResult<UserType>>>
-    {
-        return c.json({success: true, data: c.get("user")});
+        c: Context<ApplicationEnviroment>,
+    ): Promise<TypedResponse<ApplicationResult<UserType>>> {
+        return c.json({ success: true, data: c.get("user") });
     }
 
-    public async validate(c: Context<ApplicationEnviroment>, next: Next,)
-    {
+    public async validate(c: Context<ApplicationEnviroment>, next: Next,) {
         const path = c.req.path;
         const header = (c.req.header("Authorization") ?? "").split(" ");
+        const { JWT_SECRET } = env<ApplicationEnviroment['Bindings']>(c);
 
-        if (path.startsWith("/api/auth/register") || path.startsWith("/api/auth/auth"))
-            {
-                await next();
-                return;
-            }  
-        if(header.length !==0 && header[0] !=="Bearer")
-        {
-            return c.json({ success: false, error: "BAD AUTH"}, 401);     
+
+        if (path.startsWith("/api/auth/register") || path.startsWith("/api/auth/auth")) {
+            await next();
+            return;
+        }
+        if (header.length !== 2 && header[0] !== "Bearer") {
+            return c.json({ success: false, error: "BAD AUTH" }, 401);
         }
 
-        const { payload } = decode(header?.[1] ?? "")
-        const userId = Number(payload.sub);
-        const user = this.repository.findById(userId);
 
-        if (!user)
-        {
-            return c.json({ success: false, error: "BAD AUTH"}, 401);     
+
+        try {
+
+            const payload = await verify(header?.[1] ?? "", JWT_SECRET, "HS256");
+            const userId = Number(payload.sub);
+            const user = this.repository.findById(userId);
+
+            if (!user) {
+                return c.json({ success: false, error: "BAD AUTH" }, 401);
+            }
+
+            c.set("user", user);
+
+            await next();
+        } catch (error) {
+
+            return c.json({ success: false, error: "BAD AUTH" }, 401);
         }
-
-        c.set("user", user);
-
-        await next();
     }
-    
+
 }

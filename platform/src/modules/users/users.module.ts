@@ -21,8 +21,8 @@ export class UsersModule {
     this.repository.init();
 
     return {
-      authController: this.authController.routes(),
-      usersController: this.usersController.routes(),
+      authRouter: this.authController.routes(),
+      usersRouter: this.usersController.routes(),
 
       validate: this.authController.validate.bind(this.authController),
     }
